@@ -2320,7 +2320,9 @@ class GPSScanApp:
         
         # リネーム実行
         success_count = 0
+        skipped_count = 0
         error_list = []
+        skipped_list = []
         
         for item in rename_list:
             try:
@@ -2329,6 +2331,12 @@ class GPSScanApp:
                 
                 if not os.path.exists(src_path):
                     error_list.append(f"{item['original']}: ファイルが見つかりません")
+                    continue
+                
+                # 同一ファイル名チェック（パスも含めて比較）
+                if os.path.abspath(src_path) == os.path.abspath(dst_path):
+                    skipped_list.append(f"{item['original']}: 同一ファイル名のためスキップ")
+                    skipped_count += 1
                     continue
                 
                 # ファイルコピー
@@ -2341,12 +2349,51 @@ class GPSScanApp:
         # 結果表示
         result_message = f"{success_count}枚の写真をリネームしました"
         
+        if skipped_count > 0:
+            result_message += f"\n\nスキップ ({skipped_count}件):\n" + "\n".join(skipped_list[:3])
+            if len(skipped_list) > 3:
+                result_message += f"\n...他{len(skipped_list) - 3}件"
+        
         if error_list:
             result_message += f"\n\nエラー ({len(error_list)}件):\n" + "\n".join(error_list[:5])
             if len(error_list) > 5:
                 result_message += f"\n...他{len(error_list) - 5}件"
         
         messagebox.showinfo("完了", result_message)
+    
+    def create_backup(self):
+        """バックアップフォルダを作成して元ファイルをコピー"""
+        if not self.photo_directory.get():
+            raise Exception("写真フォルダが選択されていません")
+        
+        # バックアップフォルダ名を生成
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_folder = os.path.join(self.photo_directory.get(), f"backup_{timestamp}")
+        
+        # バックアップフォルダを作成
+        try:
+            os.makedirs(backup_folder, exist_ok=True)
+        except Exception as e:
+            raise Exception(f"バックアップフォルダ作成失敗: {str(e)}")
+        
+        # リネーム対象ファイルをバックアップ
+        backup_count = 0
+        for item_id in self.photos_tree.get_children():
+            values = self.photos_tree.item(item_id)['values']
+            if values[1]:  # 新ファイル名が設定されている
+                original_filename = values[0]
+                src_path = os.path.join(self.photo_directory.get(), original_filename)
+                
+                if os.path.exists(src_path):
+                    dst_path = os.path.join(backup_folder, original_filename)
+                    try:
+                        shutil.copy2(src_path, dst_path)
+                        backup_count += 1
+                    except Exception as e:
+                        raise Exception(f"ファイルバックアップ失敗 {original_filename}: {str(e)}")
+        
+        print(f"バックアップ完了: {backup_count}ファイルを {backup_folder} に保存")
+        return backup_folder
     
     def auto_match_by_gps(self):
         """GPS座標に基づいて写真を自動マッチング"""
