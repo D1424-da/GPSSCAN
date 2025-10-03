@@ -1,0 +1,29 @@
+# GPSSCAN - 測量写真リネームアプリケーション
+# 必要なPythonライブラリ
+
+# 画像処理
+pillow>=9.0.0
+
+# データ処理
+pandas>=1.5.0
+numpy>=1.21.0
+
+# 画像解析
+opencv-python>=4.6.0
+scikit-image>=0.19.0
+
+# 座標変換
+pyproj>=3.4.0
+
+# グラフ・地図表示
+matplotlib>=3.5.0
+japanize-matplotlib>=1.1.3
+
+# EXIF情報処理
+exifread>=3.0.0
+
+# GUI (標準ライブラリ - インストール不要)
+# tkinter
+
+# その他標準ライブラリ (インストール不要)
+# os, sys, re, math, shutil, datetime, traceback
