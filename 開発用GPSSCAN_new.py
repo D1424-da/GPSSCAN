@@ -246,19 +246,19 @@ class GPSScanApp:
         action_frame.grid(row=3, column=0, columnspan=3, sticky=tk.EW, padx=5, pady=10)
         
         # ドラッグ方法選択
-        drag_label_frame = ttk.LabelFrame(action_frame, text="ドラッグ方法", padding=5)
+        drag_label_frame = ttk.LabelFrame(action_frame, text="マッチング方法", padding=5)
         drag_label_frame.pack(side=tk.LEFT, padx=(0, 10))
         
         ttk.Radiobutton(
             drag_label_frame, 
-            text="写真リストからドラッグ", 
+            text="写真リストと境界点をクリック", 
             variable=self.drag_mode, 
             value=1
         ).pack(side=tk.LEFT, padx=5)
         
         ttk.Radiobutton(
             drag_label_frame, 
-            text="配置図からドラッグ", 
+            text="配置図でドラッグ", 
             variable=self.drag_mode, 
             value=2
         ).pack(side=tk.LEFT, padx=5)
@@ -2180,6 +2180,94 @@ class GPSScanApp:
             messagebox.showinfo("成功", "マッチングを解除しました")
             self.update_map_light()
     
+    def create_backup(self):
+        """写真ファイルのバックアップを作成"""
+        import time
+        
+        if not self.photo_directory.get():
+            raise Exception("写真ディレクトリが設定されていません")
+        
+        # バックアップフォルダ名を作成（現在時刻）
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_folder_name = f"backup_{timestamp}"
+        backup_path = os.path.join(self.photo_directory.get(), backup_folder_name)
+        
+        # バックアップフォルダ作成
+        try:
+            os.makedirs(backup_path, exist_ok=True)
+        except Exception as e:
+            raise Exception(f"バックアップフォルダの作成に失敗: {str(e)}")
+        
+        # リネーム対象の写真をバックアップ
+        backup_count = 0
+        failed_files = []
+        
+        for item_id in self.photos_tree.get_children():
+            values = self.photos_tree.item(item_id)['values']
+            if values[1]:  # 新ファイル名が設定されている写真のみ
+                original_filename = values[0]
+                src_path = os.path.join(self.photo_directory.get(), original_filename)
+                
+                if os.path.exists(src_path):
+                    dst_path = os.path.join(backup_path, original_filename)
+                    
+                    # リトライ機能付きでファイルコピー
+                    success = False
+                    for attempt in range(3):  # 最大3回試行
+                        try:
+                            # ファイルが使用中でないか確認
+                            with open(src_path, 'rb') as test_file:
+                                test_file.read(1)  # 1バイト読み取りテスト
+                            
+                            # コピー実行
+                            shutil.copy2(src_path, dst_path)
+                            backup_count += 1
+                            success = True
+                            break
+                            
+                        except PermissionError as e:
+                            if attempt < 2:  # 最後の試行でない場合
+                                print(f"[WARN] ファイルアクセス失敗 (試行{attempt+1}/3): {original_filename}")
+                                time.sleep(0.5)  # 0.5秒待機してリトライ
+                                continue
+                            else:
+                                failed_files.append(f"{original_filename} (アクセス拒否)")
+                                
+                        except Exception as e:
+                            if attempt < 2:
+                                print(f"[WARN] コピー失敗 (試行{attempt+1}/3): {original_filename} - {str(e)}")
+                                time.sleep(0.5)
+                                continue
+                            else:
+                                failed_files.append(f"{original_filename} ({str(e)})")
+                    
+                    if not success:
+                        print(f"[ERROR] バックアップ失敗: {original_filename}")
+                else:
+                    failed_files.append(f"{original_filename} (ファイルが存在しません)")
+        
+        # 結果の確認
+        if backup_count == 0:
+            error_msg = "バックアップ対象の写真がありません"
+            if failed_files:
+                error_msg += f"\n失敗したファイル:\n" + "\n".join(failed_files[:5])
+                if len(failed_files) > 5:
+                    error_msg += f"\n...他{len(failed_files) - 5}件"
+            raise Exception(error_msg)
+        
+        # 部分的な成功でも警告表示
+        if failed_files:
+            warning_msg = f"一部のファイルのバックアップに失敗しました:\n" + "\n".join(failed_files[:3])
+            if len(failed_files) > 3:
+                warning_msg += f"\n...他{len(failed_files) - 3}件"
+            messagebox.showwarning("部分的成功", warning_msg)
+        
+        print(f"[INFO] バックアップ完了: {backup_count}枚の写真を {backup_path} にコピーしました")
+        if failed_files:
+            print(f"[WARN] 失敗: {len(failed_files)}枚")
+        
+        return backup_path
+    
     def rename_photos_to_new_folder(self):
         """写真を新しいフォルダにリネームしてコピー"""
         if not self.photo_gps_data:
@@ -2205,6 +2293,8 @@ class GPSScanApp:
         
         # リネーム対象の写真リストを作成
         rename_list = []
+        same_name_count = 0
+        
         for item_id in self.photos_tree.get_children():
             values = self.photos_tree.item(item_id)['values']
             if values[1]:  # 新ファイル名が設定されている
@@ -2215,16 +2305,27 @@ class GPSScanApp:
                 # 実際のファイルが存在するか確認
                 src_exists = os.path.exists(os.path.join(self.photo_directory.get(), original_filename))
                 
+                # 同名ファイルをカウント
+                if original_filename == new_filename:
+                    same_name_count += 1
+                
                 rename_list.append({
                     'item_id': item_id,
                     'original': original_filename,
                     'new': new_filename,
-                    'src_exists': src_exists
+                    'src_exists': src_exists,
+                    'is_same_name': original_filename == new_filename
                 })
         
         if not rename_list:
             messagebox.showwarning("警告", "リネーム対象の写真がありません")
             return
+        
+        # 同名ファイルの情報を表示
+        if same_name_count > 0:
+            info_msg = f"確認: {same_name_count}枚の写真は既に正しいファイル名です（処理をスキップします）"
+            print(f"[INFO] {info_msg}")
+            messagebox.showinfo("確認", info_msg)
         
         # 出力フォルダを選択
         output_folder = filedialog.askdirectory(title="リネーム後の写真を保存するフォルダを選択")
@@ -2233,24 +2334,56 @@ class GPSScanApp:
             return
         
         # リネーム実行
+        import time
         success_count = 0
         error_list = []
         
         for item in rename_list:
-            try:
-                src_path = os.path.join(self.photo_directory.get(), item['original'])
-                dst_path = os.path.join(output_folder, item['new'])
-                
-                if not os.path.exists(src_path):
-                    error_list.append(f"{item['original']}: ファイルが見つかりません")
-                    continue
-                
-                # ファイルコピー
-                shutil.copy2(src_path, dst_path)
-                success_count += 1
-                
-            except Exception as e:
-                error_list.append(f"{item['original']}: {str(e)}")
+            src_path = os.path.join(self.photo_directory.get(), item['original'])
+            dst_path = os.path.join(output_folder, item['new'])
+            
+            if not os.path.exists(src_path):
+                error_list.append(f"{item['original']}: ファイルが見つかりません")
+                continue
+            
+            # 同名ファイルの場合はスキップ（上書き不要）
+            if item['original'] == item['new']:
+                print(f"[INFO] スキップ: {item['original']} (元ファイル名と同じため)")
+                success_count += 1  # 成功としてカウント（実質的に処理完了）
+                continue
+            
+            # リトライ機能付きでファイルコピー
+            success = False
+            for attempt in range(3):  # 最大3回試行
+                try:
+                    # ファイルが使用中でないか確認
+                    with open(src_path, 'rb') as test_file:
+                        test_file.read(1)  # 1バイト読み取りテスト
+                    
+                    # コピー実行
+                    shutil.copy2(src_path, dst_path)
+                    success_count += 1
+                    success = True
+                    break
+                    
+                except PermissionError as e:
+                    if attempt < 2:  # 最後の試行でない場合
+                        print(f"[WARN] ファイルアクセス失敗 (試行{attempt+1}/3): {item['original']}")
+                        time.sleep(0.5)  # 0.5秒待機してリトライ
+                        continue
+                    else:
+                        error_list.append(f"{item['original']}: ファイルが使用中です（別のプロセスでファイルが開かれている可能性があります）")
+                        
+                except Exception as e:
+                    if attempt < 2:
+                        print(f"[WARN] コピー失敗 (試行{attempt+1}/3): {item['original']} - {str(e)}")
+                        time.sleep(0.5)
+                        continue
+                    else:
+                        error_list.append(f"{item['original']}: {str(e)}")
+            
+            if not success:
+                print(f"[ERROR] リネーム失敗: {item['original']}")
         
         # 結果表示
         result_message = f"{success_count}枚の写真をリネームしました"
