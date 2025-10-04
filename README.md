@@ -70,7 +70,7 @@ pip install -r requirements.txt
 
 ### 実行
 ```bash
-python 開発用GPSSCAN_new.py
+python GPSSCAN.py
 ```
 
 ## 📋 必要なライブラリ
