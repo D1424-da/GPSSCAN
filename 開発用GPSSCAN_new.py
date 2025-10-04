@@ -536,6 +536,18 @@ class GPSScanApp:
         
         print(f"測量点: {len(self.sim_points)}点、地番: {len(self.landparcel_data)}筆 読み込み完了")
         
+        # 測量図の座標範囲を計算して保存
+        if self.sim_points:
+            x_coords = [p['X座標'] for p in self.sim_points]
+            y_coords = [p['Y座標'] for p in self.sim_points]
+            
+            # 測量座標系: X=北(縦軸), Y=東(横軸) → 表示はY(横軸)とX(縦軸)
+            margin = max(max(x_coords) - min(x_coords), max(y_coords) - min(y_coords)) * 0.1
+            self.sim_initial_xlim = (min(y_coords) - margin, max(y_coords) + margin)  # 横軸はY座標
+            self.sim_initial_ylim = (min(x_coords) - margin, max(x_coords) + margin)  # 縦軸はX座標
+            
+            print(f"測量図範囲を保存: X軸={self.sim_initial_xlim}, Y軸={self.sim_initial_ylim}")
+        
         # 既に写真が読み込まれている場合、座標系変更に応じて再変換
         if self.photo_gps_data:
             self.convert_existing_photos_coordinates()
@@ -1585,13 +1597,26 @@ class GPSScanApp:
     
     def reset_map_view(self):
         """地図表示を測量図の初期位置に戻す"""
-        if self.ax and self.initial_xlim and self.initial_ylim:
+        if not self.ax:
+            messagebox.showinfo("情報", "地図がまだ表示されていません")
+            return
+        
+        # 測量図範囲が存在する場合はそれを優先
+        if self.sim_initial_xlim and self.sim_initial_ylim:
+            self.ax.set_xlim(self.sim_initial_xlim)
+            self.ax.set_ylim(self.sim_initial_ylim)
+            self.canvas.draw()
+            self.status_label.config(text="測量図の位置に戻しました")
+            print(f"測量図範囲に復元: X軸={self.sim_initial_xlim}, Y軸={self.sim_initial_ylim}")
+        # 測量図範囲がない場合は従来の初期範囲を使用
+        elif self.initial_xlim and self.initial_ylim:
             self.ax.set_xlim(self.initial_xlim)
             self.ax.set_ylim(self.initial_ylim)
             self.canvas.draw()
             self.status_label.config(text="地図表示を初期位置に戻しました")
+            print(f"一般初期範囲に復元: X軸={self.initial_xlim}, Y軸={self.initial_ylim}")
         else:
-            messagebox.showinfo("情報", "地図がまだ表示されていません")
+            messagebox.showinfo("情報", "復元できる地図範囲がありません")
     
     def on_tree_motion(self, event):
         """写真リストでマウスが動いた時にプレビュー表示"""
