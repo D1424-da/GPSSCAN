@@ -5,8 +5,7 @@
 
 **8年間の測量業務経験から生まれた、写真管理業務を数時間→数分に短縮する自動化ツール**
 
-![メイン画面](docs/images/main_screen.png)
-> ※ スクリーンショットを `docs/images/screenshot.png` に配置してください
+![メイン画面](docs/images/GPSSCAN.gif)
 
 ---
 
@@ -120,10 +119,6 @@ Python 3.8+
 ### 処理結果
 ![処理結果](docs/images/result.png)
 
-
-> - `main_screen.png` - メイン画面
-> - `map_view.png` - 地図表示
-> - `result.png` - 処理結果
 
 ---
 
